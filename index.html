@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>3D Pong Starter</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: black; }
+        canvas { display: block; position: absolute; top: 0; left: 0; }
+        #hudCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            /* Ne treba pointer-events:none; ako zelimo da se vidi HUD */
+        }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas" width="800" height="600"></canvas>
+    <canvas id="hudCanvas" width="800" height="600"></canvas>
+
+    <script src="main.js" defer></script>
+
+</body>
+</html>

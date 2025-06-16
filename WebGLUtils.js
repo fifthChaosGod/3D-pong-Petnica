@@ -1,3 +1,7 @@
+// Ovaj fajl ne treba da se učitava u index.html jer main.js sada sadrži sve potrebne funkcije.
+// Ako se odlučite da ga koristite, moraćete da izmenite main.js da ga importuje kao modul
+// i da prilagodite funkcije u main.js da koriste metode iz WebGLUtils.
+// Takođe, ako ima "import" izjave, mora se učitati sa type="module".
 import { mat4, vec3 } from 'https://cdn.jsdelivr.net/npm/gl-matrix@3.4.0/+esm';
 
 const WebGLUtils = {
@@ -267,5 +271,4 @@ const WebGLUtils = {
 		});
 	}
 }
-
-export default WebGLUtils;
+// export default WebGLUtils; // Nije potrebno ako se ne uvozi

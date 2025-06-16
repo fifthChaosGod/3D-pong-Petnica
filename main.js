@@ -9,9 +9,8 @@ if (!gl) {
     // Ako želite da canvas zauzima ceo prozor
     glCanvas.width = window.innerWidth;
     glCanvas.height = window.innerHeight;
-    gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+    gl.viewport(0, 0, glCanvas.width, gl.canvas.height);
 }
-
 
 // Kontekst za 2D HUD (scoreboard i Game Over)
 const hudCanvas = document.getElementById("hudCanvas");
@@ -19,7 +18,6 @@ const hudCtx = hudCanvas.getContext("2d");
 // Ako želite da canvas zauzima ceo prozor
 hudCanvas.width = window.innerWidth;
 hudCanvas.height = window.innerHeight;
-
 
 // --- Ugrađeni šejderi (Vertex i Fragment) ---
 const vsSource = `
@@ -135,7 +133,7 @@ function createSphere(radius, latBands, longBands) {
     return { positions, normals, indices, radius }; // Dodaj radius
 }
 
-// Funkcija za kreiranje kutije (reketa)
+// Funkcija za kreiranje kutije (reketa, golova, novčića)
 function createBox(width, height, depth) {
     const w = width / 2, h = height / 2, d = depth / 2;
     // Pozicije vrhova kocke (po 4 vrha za svaku od 6 strana, ukupno 24 vrha)
@@ -194,21 +192,18 @@ function createAndBindBuffers(geometry) {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(geometry.indices), gl.STATIC_DRAW);
 
-    // ✅ OVO JE PRAVI return — UNUTAR FUNKCIJE
     return {
         positionBuffer,
         normalBuffer,
         indexBuffer,
         count: geometry.indices.length,
-
-        // 👇 DODAJ OVE REDOVE UNUTAR return-a
-        width: geometry.width || 0.2,
-        height: geometry.height || 0.6,
-        depth: geometry.depth || 0.2,
-        radius: geometry.radius || 0.08
+        // Propagiraj dimenzije/radijus za lakšu proveru kolizija
+        width: geometry.width,
+        height: geometry.height,
+        depth: geometry.depth,
+        radius: geometry.radius
     };
 }
-
 
 // Funkcije za matrice (jednostavne implementacije bez gl-matrix biblioteke)
 function getIdentityMatrix() {
@@ -262,6 +257,7 @@ function drawObject(obj, positionX, positionY, positionZ, scaleX, scaleY, scaleZ
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, obj.indexBuffer);
 
     let modelMatrix = getTranslationMatrix(positionX, positionY, positionZ);
+    // Skaliranje je obično deo modelovanja, ali ovde ga primenjujemo posle translacije za jednostavnost
     let scaleMatrix = getScaleMatrix(scaleX, scaleY, scaleZ);
     modelMatrix = multiplyMatrices(modelMatrix, scaleMatrix);
 
@@ -276,25 +272,49 @@ const paddleWidth = 0.2;
 const paddleHeight = 0.6;
 const paddleDepth = 0.2; // Dubina reketa
 
+const goalWidth = 0.2;
+const goalHeight = 2.0; // Visina gola, preko celog ekrana
+const goalDepth = 0.2;
+
+const coinSize = 0.1; // Veličina novčića
+
 const paddleL = createAndBindBuffers(createBox(paddleWidth, paddleHeight, paddleDepth));
 const paddleR = createAndBindBuffers(createBox(paddleWidth, paddleHeight, paddleDepth));
 const sphereRadius = 0.08;
 const sphere = createAndBindBuffers(createSphere(sphereRadius, 30, 30));
 
+const goalLeft = createAndBindBuffers(createBox(goalWidth, goalHeight, goalDepth));
+const goalRight = createAndBindBuffers(createBox(goalWidth, goalHeight, goalDepth));
+
+const coin = createAndBindBuffers(createBox(coinSize, coinSize, coinSize));
+
 
 // === Igra ===
 let ball = { x: 0, y: 0, dx: 0.03, dy: 0.02 };
-let leftX = -1.5, leftY = 0; // Početne pozicije reketa
-let rightX = 1.5, rightY = 0; // Početne pozicije reketa
+let leftX = 0, leftY = 0; // Početne pozicije reketa - inicijalizuju se u resetGameState
+let rightX = 0, rightY = 0; // Početne pozicije reketa - inicijalizuju se u resetGameState
 let keys = {};
 let player1Score = 0, player2Score = 0;
-const maxScore = 10;
+let maxScore = 10; // Defaultna vrednost, biće podešena kroz meni
 let gameOver = false;
+let gameMode = ''; // 'classic' or 'free'
+let gameDifficulty = ''; // 'normal' or 'fast'
+let ballSpeedIncreaseFactor = 0.0; // Faktor ubrzanja loptice
+const initialBallSpeedNormalMode = 0.03; // Početna brzina loptice za Normal Mode
+const initialBallSpeedFastMode = 0.005; // SMANJENO JOŠ VIŠE: Početna brzina loptice za Fast Mode (mnogo sporije)
+const speedIncreasePerHitNormal = 0.002; // Koliko se faktor ubrzanja povećava po udarcu u Normal modu
+const speedIncreasePerHitFast = 0.004; // POVEĆANO: Brže ubrzanje u Fast modu
+
+let coinActive = false;
+let coinPosition = { x: 0, y: 0 };
+let lastCoinSpawnTime = 0;
+const coinSpawnIntervalNormal = 2000; // Normalna frekvencija spawn-ovanja novčića
+const coinSpawnIntervalFast = 4000; // Spora frekvencija spawn-ovanja novčića u Fast Mode
 
 // Početne pozicije za reset reketa
-const initialLeftX = -1.5;
+const initialLeftX = -2.5; // Ostaju iste
 const initialLeftY = 0;
-const initialRightX = 1.5;
+const initialRightX = 2.5; // Ostaju iste
 const initialRightY = 0;
 
 // Upravljanje unosom sa tastature
@@ -305,7 +325,7 @@ document.addEventListener("keydown", e => {
         player1Score = 0;
         player2Score = 0;
         gameOver = false;
-        resetGameState(); // Resetuj sve na početne pozicije
+        showMenu(); // Pokaži meni ponovo
     }
 });
 document.addEventListener("keyup", e => keys[e.key] = false);
@@ -314,16 +334,113 @@ document.addEventListener("keyup", e => keys[e.key] = false);
 function resetGameState() {
     ball.x = 0;
     ball.y = 0;
-    // Random smer loptice
-    ball.dx = 0.03 * (Math.random() > 0.5 ? 1 : -1);
-    ball.dy = 0.02 * (Math.random() > 0.5 ? 1 : -1);
+    // Odredi početnu brzinu na osnovu odabranog moda težine
+    let currentInitialSpeed = (gameDifficulty === 'fast') ? initialBallSpeedFastMode : initialBallSpeedNormalMode;
+    ball.dx = currentInitialSpeed * (Math.random() > 0.5 ? 1 : -1);
+    ball.dy = currentInitialSpeed * (Math.random() > 0.5 ? 1 : -1);
     leftX = initialLeftX;
     leftY = initialLeftY;
     rightX = initialRightX;
     rightY = initialRightY;
+    ballSpeedIncreaseFactor = 0.0; // Resetuj faktor brzine
+    coinActive = false; // Ukloni novčić pri resetu
+    lastCoinSpawnTime = performance.now(); // Resetuj vreme za spawn novčića
 }
 
-resetGameState(); // Inicijalno resetovanje igre
+// === Meni i Inicijalizacija ===
+const menuContainer = document.getElementById('menuContainer');
+const menuTitle = document.getElementById('menuTitle');
+const classicModeBtn = document.getElementById('classicModeBtn');
+const freeModeBtn = document.getElementById('freeModeBtn');
+const normalDifficultyBtn = document.getElementById('normalDifficultyBtn');
+const fastDifficultyBtn = document.getElementById('fastDifficultyBtn');
+const score10Btn = document.getElementById('score10Btn');
+const score20Btn = document.getElementById('score20Btn');
+const score30Btn = document.getElementById('score30Btn');
+
+classicModeBtn.addEventListener('click', () => {
+    gameMode = 'classic';
+    showDifficultyMenu();
+});
+
+freeModeBtn.addEventListener('click', () => {
+    gameMode = 'free';
+    showDifficultyMenu();
+});
+
+normalDifficultyBtn.addEventListener('click', () => {
+    gameDifficulty = 'normal';
+    showScoreLimitMenu();
+});
+
+fastDifficultyBtn.addEventListener('click', () => {
+    gameDifficulty = 'fast';
+    showScoreLimitMenu();
+});
+
+score10Btn.addEventListener('click', () => {
+    maxScore = 10;
+    startGame();
+});
+
+score20Btn.addEventListener('click', () => {
+    maxScore = 20;
+    startGame();
+});
+
+score30Btn.addEventListener('click', () => {
+    maxScore = 30;
+    startGame();
+});
+
+
+function showMenu() {
+    menuContainer.style.display = 'block';
+    menuTitle.textContent = 'Choose Game Mode:';
+    classicModeBtn.style.display = 'block';
+    freeModeBtn.style.display = 'block';
+    normalDifficultyBtn.style.display = 'none';
+    fastDifficultyBtn.style.display = 'none';
+    score10Btn.style.display = 'none';
+    score20Btn.style.display = 'none';
+    score30Btn.style.display = 'none';
+    gameOver = true; // Zadrži igru pauziranom dok je meni aktivan
+}
+
+function showDifficultyMenu() {
+    menuTitle.textContent = 'Choose Difficulty:';
+    classicModeBtn.style.display = 'none';
+    freeModeBtn.style.display = 'none';
+    normalDifficultyBtn.style.display = 'block';
+    fastDifficultyBtn.style.display = 'block';
+    score10Btn.style.display = 'none';
+    score20Btn.style.display = 'none';
+    score30Btn.style.display = 'none';
+}
+
+function showScoreLimitMenu() {
+    menuTitle.textContent = 'Play to:';
+    classicModeBtn.style.display = 'none';
+    freeModeBtn.style.display = 'none';
+    normalDifficultyBtn.style.display = 'none';
+    fastDifficultyBtn.style.display = 'none';
+    score10Btn.style.display = 'block';
+    score20Btn.style.display = 'block';
+    score30Btn.style.display = 'block';
+}
+
+
+function startGame() {
+    menuContainer.style.display = 'none';
+    gameOver = false;
+    player1Score = 0; // Resetuj skor pri novoj igri
+    player2Score = 0; // Resetuj skor pri novoj igri
+    resetGameState();
+    // lastCoinSpawnTime se resetuje u resetGameState()
+    requestAnimationFrame(render); // Pokreni render petlju
+}
+
+showMenu(); // Prikaži meni kada se stranica učita
 
 // Ažuriranje skorborda i Game Over poruke
 function drawScore() {
@@ -348,46 +465,57 @@ function drawScore() {
     }
 }
 
+// Funkcija za proveru kolizije između AABB (Axis-Aligned Bounding Box)
+function checkAABBCollision(x1, y1, w1, h1, x2, y2, w2, h2) {
+    return (x1 < x2 + w2 &&
+            x1 + w1 > x2 &&
+            y1 < y2 + h2 &&
+            y1 + h1 > y2);
+}
+
 // Glavna petlja igre
-function render() {
+function render(currentTime) {
     if (gameOver) {
         drawScore(); // Prikazuj samo Game Over poruku
-        requestAnimationFrame(render);
-        return;
+        return; // Ne pozivaj requestAnimationFrame ovde, pokreće se iz startGame
     }
 
     // --- Kretanje reketa ---
     const paddleSpeed = 0.05;
-    // Granice kretanja za Y osu su bazirane na dimenzijama viewporta i reketa
-    // Pretpostavljajući da je vertikalni opseg vidljivosti oko [-2, 2] u svetskim koordinatama kada je kamera na Z=-5
-    const worldHeight = 2 * Math.tan(Math.PI / 8) * 5; // tan(FOV/2) * distance_to_plane
+    const worldHeight = 2 * Math.tan(Math.PI / 4 / 2) * 5; // tan(FOV/2) * distance_to_plane
     const yLimit = (worldHeight / 2) - (paddleL.height / 2);
-
-    // Granice kretanja za X osu. Player 1 (levi) je ograničen na levu polovinu, Player 2 (desni) na desnu.
-    // X opseg je oko [-aspect*2, aspect*2], prilagođavam ga vizuelno
-    const xHalfLimit = 2.0; // Prilagođena polovina vidljivog X opsega
-    const player1MaxX = -0.1; // Malo odmaknuto od centra
+    // Prilagođavamo xHalfLimit da se reketi ne preklapaju kada su na krajevima terena
+    // i da ostanu unutar vizuelnog polja.
+    const xHalfLimit = 2.9; // Malo manje od goalXBoundary da reketi ne idu preko golova
+    const player1MaxX = -paddleL.width / 2 - 0.1; // Malo odmaknuto od centra
     const player2MinX = paddleR.width / 2 + 0.1; // Malo odmaknuto od centra
-
 
     // Player 1 (W, A, S, D)
     if (keys["w"]) leftY = Math.min(yLimit, leftY + paddleSpeed);
     if (keys["s"]) leftY = Math.max(-yLimit, leftY - paddleSpeed);
-    if (keys["a"]) leftX = Math.max(-xHalfLimit, leftX - paddleSpeed);
-    if (keys["d"]) leftX = Math.min(player1MaxX, leftX + paddleSpeed);
+    if (gameMode === 'free') {
+        if (keys["a"]) leftX = Math.max(-xHalfLimit, leftX - paddleSpeed);
+        if (keys["d"]) leftX = Math.min(player1MaxX, leftX + paddleSpeed);
+    } else { // Classic mode, ograniči X kretanje
+        leftX = initialLeftX; // Uvek na početnoj X poziciji
+    }
+
 
     // Player 2 (ArrowUp, ArrowDown, ArrowLeft, ArrowRight)
     if (keys["ArrowUp"]) rightY = Math.min(yLimit, rightY + paddleSpeed);
     if (keys["ArrowDown"]) rightY = Math.max(-yLimit, rightY - paddleSpeed);
-    if (keys["ArrowLeft"]) rightX = Math.max(player2MinX, rightX - paddleSpeed);
-    if (keys["ArrowRight"]) rightX = Math.min(xHalfLimit, rightX + paddleSpeed);
+    if (gameMode === 'free') {
+        if (keys["ArrowLeft"]) rightX = Math.max(player2MinX, rightX - paddleSpeed);
+        if (keys["ArrowRight"]) rightX = Math.min(xHalfLimit, rightX + paddleSpeed);
+    } else { // Classic mode, ograniči X kretanje
+        rightX = initialRightX; // Uvek na početnoj X poziciji
+    }
 
     // --- Kretanje lopte ---
     ball.x += ball.dx;
     ball.y += ball.dy;
 
     // Gornja/donja ivica terena (odbijanje od "zidova")
-    // Ograničavamo Y osu loptice na isti vizuelni opseg kao i rekete
     const ballYLimit = yLimit; // Lopta ne sme da ide van vidljivog Y opsega
     if (ball.y + sphere.radius > ballYLimit || ball.y - sphere.radius < -ballYLimit) {
         ball.dy *= -1;
@@ -401,8 +529,15 @@ function render() {
     if (ball.dx < 0 && ball.x - sphere.radius <= leftX + paddleL.width / 2 && ball.x - sphere.radius >= leftX - paddleL.width / 2) {
         if (ball.y + sphere.radius > leftY - paddleL.height / 2 && ball.y - sphere.radius < leftY + paddleL.height / 2) {
             ball.dx *= -1; // Odbijanje
-            ball.dx *= 1.05; // Povećanje brzine
-            ball.dy *= 1.05;
+            if (gameDifficulty === 'fast') {
+                // Brže povećanje brzine u Fast modu
+                ball.dx = Math.sign(ball.dx) * (Math.abs(ball.dx) + speedIncreasePerHitFast);
+                ball.dy = Math.sign(ball.dy) * (Math.abs(ball.dy) + speedIncreasePerHitFast);
+            } else {
+                // Standardno povećanje brzine u Normal modu
+                ball.dx = Math.sign(ball.dx) * (Math.abs(ball.dx) + speedIncreasePerHitNormal);
+                ball.dy = Math.sign(ball.dy) * (Math.abs(ball.dy) + speedIncreasePerHitNormal);
+            }
             // Korekcija pozicije da lopta ne prođe kroz reket
             ball.x = leftX + paddleL.width / 2 + sphere.radius;
         }
@@ -412,20 +547,65 @@ function render() {
     if (ball.dx > 0 && ball.x + sphere.radius >= rightX - paddleR.width / 2 && ball.x + sphere.radius <= rightX + paddleR.width / 2) {
         if (ball.y + sphere.radius > rightY - paddleR.height / 2 && ball.y - sphere.radius < rightY + paddleR.height / 2) {
             ball.dx *= -1; // Odbijanje
-            ball.dx *= 1.05; // Povećanje brzine
-            ball.dy *= 1.05;
+            if (gameDifficulty === 'fast') {
+                // Brže povećanje brzine u Fast modu
+                ball.dx = Math.sign(ball.dx) * (Math.abs(ball.dx) + speedIncreasePerHitFast);
+                ball.dy = Math.sign(ball.dy) * (Math.abs(ball.dy) + speedIncreasePerHitFast);
+            } else {
+                // Standardno povećanje brzine u Normal modu
+                ball.dx = Math.sign(ball.dx) * (Math.abs(ball.dx) + speedIncreasePerHitNormal);
+                ball.dy = Math.sign(ball.dy) * (Math.abs(ball.dy) + speedIncreasePerHitNormal);
+            }
             // Korekcija pozicije da lopta ne prođe kroz reket
             ball.x = rightX - paddleR.width / 2 - sphere.radius;
         }
     }
 
-    // --- Poeni i Game Over ---
-    const goalX = 2.5; // Granica za gol
+    // --- Kolizija reketa sa novčićem ---
+    if (coinActive) {
+        // Pozicija coin-a i njegove dimenzije za AABB
+        const coinRect = {
+            x: coinPosition.x - coin.width / 2,
+            y: coinPosition.y - coin.height / 2,
+            width: coin.width,
+            height: coin.height
+        };
 
-    if (ball.x < -goalX) { // Lopta je prošla levi zid (gol za igrača 2)
+        // Pozicija levog reketa i njegove dimenzije za AABB
+        const paddleLRect = {
+            x: leftX - paddleL.width / 2,
+            y: leftY - paddleL.height / 2,
+            width: paddleL.width,
+            height: paddleL.height
+        };
+
+        // Pozicija desnog reketa i njegove dimenzije za AABB
+        const paddleRRect = {
+            x: rightX - paddleR.width / 2,
+            y: rightY - paddleR.height / 2,
+            width: paddleR.width,
+            height: paddleR.height
+        };
+
+        if (checkAABBCollision(paddleLRect.x, paddleLRect.y, paddleLRect.width, paddleLRect.height,
+                               coinRect.x, coinRect.y, coinRect.width, coinRect.height)) {
+            player1Score++;
+            coinActive = false;
+        } else if (checkAABBCollision(paddleRRect.x, paddleRRect.y, paddleRRect.width, paddleRRect.height,
+                                      coinRect.x, coinRect.y, coinRect.width, coinRect.height)) {
+            player2Score++;
+            coinActive = false;
+        }
+    }
+
+
+    // --- Poeni i Game Over (golovi) ---
+    const goalXBoundary = 4.0; // X pozicija golova
+
+    if (ball.x < -goalXBoundary) { // Lopta je prošla levi gol (gol za igrača 2)
         player2Score++;
         resetGameState(); // Resetuje poziciju loptice i reketa
-    } else if (ball.x > goalX) { // Lopta je prošla desni zid (gol za igrača 1)
+    } else if (ball.x > goalXBoundary) { // Lopta je prošla desni gol (gol za igrača 1)
         player1Score++;
         resetGameState(); // Resetuje poziciju loptice i reketa
     }
@@ -434,10 +614,40 @@ function render() {
         gameOver = true;
     }
 
+    // --- Spawn novčića ---
+    let currentCoinSpawnInterval = (gameDifficulty === 'fast') ? coinSpawnIntervalFast : coinSpawnIntervalNormal;
+
+    if (!coinActive && currentTime - lastCoinSpawnTime > currentCoinSpawnInterval) {
+        coinActive = true;
+        const maxCoinX = 2.5; // Maksimalni X opseg za spawn novčića
+        const maxCoinY = 1.8; // Maksimalni Y opseg za spawn novčića
+
+        coinPosition.x = (Math.random() * 2 - 1) * maxCoinX; // Od -maxCoinX do maxCoinX
+
+        if (gameMode === 'classic') {
+            // U Classic modu, novčići se spawnuju samo na gornjoj ili donjoj ivici
+            // Odredimo granice za Y poziciju novčića da budu blizu gornje/donje ivice
+            const edgeSpawnOffset = 0.5; // Pomeraj od ivice da ne bude previše blizu
+            if (Math.random() > 0.5) {
+                coinPosition.y = maxCoinY - edgeSpawnOffset; // Gornja ivica
+            } else {
+                coinPosition.y = -maxCoinY + edgeSpawnOffset; // Donja ivica
+            }
+        } else {
+            // U Free modu, nasumično po celom Y opsegu
+            coinPosition.y = (Math.random() * 2 - 1) * maxCoinY; // Od -maxCoinY do maxCoinY
+        }
+        lastCoinSpawnTime = currentTime;
+    }
+
     // --- Renderovanje ---
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
+    // Omogućavanje blendinga za transparentne objekte (golove)
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
 
     // Podesite matricu projekcije i pogleda
     const projection = getProjectionMatrix(glCanvas.width / glCanvas.height, Math.PI / 4, 0.1, 100);
@@ -456,10 +666,16 @@ function render() {
     // Crtanje desnog reketa
     drawObject(paddleR, rightX, rightY, 0, 1, 1, 1, [0.0, 1.0, 0.0, 1.0]); // Zeleni reket
 
+    // Crtanje golova (leva crvena, desna zelena)
+    drawObject(goalLeft, -goalXBoundary, 0, 0, 1, 1, 1, [1.0, 0.0, 0.0, 0.3]); // Transparentno crvena
+    drawObject(goalRight, goalXBoundary, 0, 0, 1, 1, 1, [0.0, 1.0, 0.0, 0.3]); // Transparentno zelena
+
+    // Crtanje novčića ako je aktivan
+    if (coinActive) {
+        drawObject(coin, coinPosition.x, coinPosition.y, 0, 1, 1, 1, [1.0, 0.8, 0.0, 1.0]); // Zlatni novčić
+    }
+
     drawScore(); // Ažuriraj i prikaži skor i Game Over poruku
 
     requestAnimationFrame(render);
 }
-
-// Pokreni render petlju
-render();

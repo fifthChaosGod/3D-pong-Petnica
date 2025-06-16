@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>3D Pong Starter</title>
+    <title>3D Pong Game</title>
     <style>
         body { margin: 0; overflow: hidden; background: black; }
         canvas { display: block; position: absolute; top: 0; left: 0; }
@@ -10,13 +10,55 @@
             position: absolute;
             top: 0;
             left: 0;
-            /* Ne treba pointer-events:none; ako zelimo da se vidi HUD */
+        }
+        #menuContainer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 24px;
+            z-index: 1000; /* Osigurava da je meni iznad canvasa */
+        }
+        #menuContainer button {
+            display: block;
+            width: 200px;
+            padding: 15px;
+            margin: 15px auto;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 20px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        #menuContainer button:hover {
+            background: #45a049;
         }
     </style>
 </head>
 <body>
     <canvas id="glCanvas" width="800" height="600"></canvas>
     <canvas id="hudCanvas" width="800" height="600"></canvas>
+
+    <div id="menuContainer">
+        <h2 id="menuTitle">Choose Game Mode:</h2>
+        <button id="classicModeBtn">Classic Mode (Up/Down Only)</button>
+        <button id="freeModeBtn">Free Mode (All Directions)</button>
+        
+        <button id="normalDifficultyBtn" style="display:none;">Normal Difficulty</button>
+        <button id="fastDifficultyBtn" style="display:none;">Fast Difficulty</button>
+
+        <button id="score10Btn" style="display:none;">Play to 10 Points</button>
+        <button id="score20Btn" style="display:none;">Play to 20 Points</button>
+        <button id="score30Btn" style="display:none;">Play to 30 Points</button>
+    </div>
 
     <script src="main.js" defer></script>
 

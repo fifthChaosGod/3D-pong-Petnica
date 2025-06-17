@@ -1,16 +1,13 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="utf-8">
-    <title>3D Pong Game</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Pong</title>
     <style>
-        body { margin: 0; overflow: hidden; background: black; }
+        body { margin: 0; overflow: hidden; background: #000; }
         canvas { display: block; position: absolute; top: 0; left: 0; }
-        #hudCanvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
+        #hudCanvas { z-index: 10; } /* Da HUD bude iznad WebGL-a */
         #menuContainer {
             position: absolute;
             top: 50%;
@@ -22,21 +19,23 @@
             text-align: center;
             color: white;
             font-family: Arial, sans-serif;
-            font-size: 24px;
-            z-index: 1000; /* Osigurava da je meni iznad canvasa */
+            z-index: 20;
+        }
+        #menuContainer h2 {
+            margin-bottom: 20px;
         }
         #menuContainer button {
             display: block;
-            width: 200px;
-            padding: 15px;
-            margin: 15px auto;
+            width: 250px; /* Malo šire dugme */
+            margin: 10px auto;
+            padding: 12px; /* Veći padding */
             background: #4CAF50;
             color: white;
             border: none;
             border-radius: 5px;
-            font-size: 20px;
             cursor: pointer;
-            transition: background 0.3s ease;
+            font-size: 20px; /* Veći font */
+            transition: background 0.3s ease; /* Gladak prelaz */
         }
         #menuContainer button:hover {
             background: #45a049;
@@ -44,23 +43,27 @@
     </style>
 </head>
 <body>
-    <canvas id="glCanvas" width="800" height="600"></canvas>
-    <canvas id="hudCanvas" width="800" height="600"></canvas>
+    <canvas id="glCanvas"></canvas>
+    <canvas id="hudCanvas"></canvas>
 
     <div id="menuContainer">
         <h2 id="menuTitle">Choose Game Mode:</h2>
-        <button id="classicModeBtn">Classic Mode (Up/Down Only)</button>
-        <button id="freeModeBtn">Free Mode (All Directions)</button>
-        
-        <button id="normalDifficultyBtn" style="display:none;">Normal Difficulty</button>
-        <button id="fastDifficultyBtn" style="display:none;">Fast Difficulty</button>
+        <button id="classicModeBtn">Classic Mode</button>
+        <button id="freeModeBtn">Free Mode</button>
 
-        <button id="score10Btn" style="display:none;">Play to 10 Points</button>
-        <button id="score20Btn" style="display:none;">Play to 20 Points</button>
-        <button id="score30Btn" style="display:none;">Play to 30 Points</button>
+        <button id="singlePlayerBtn" style="display: none;">Single Player (vs AI)</button>
+        <button id="twoPlayerBtn" style="display: none;">Two Players</button>
+
+        <button id="noobDifficultyBtn" style="display: none;">Noob</button>
+        <button id="normalDifficultyBtn" style="display: none;">Normal</button>
+        <button id="fastDifficultyBtn" style="display: none;">Fast</button>
+        <button id="hardDifficultyBtn" style="display: none;">Hard</button>
+
+        <button id="score10Btn" style="display: none;">Score to 10</button>
+        <button id="score20Btn" style="display: none;">Score to 20</button>
+        <button id="score30Btn" style="display: none;">Score to 30</button>
     </div>
 
-    <script src="main.js" defer></script>
-
+    <script src="main.js"></script>
 </body>
 </html>

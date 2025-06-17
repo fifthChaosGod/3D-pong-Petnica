@@ -1,0 +1,24 @@
+function createAndBindBuffers(geometry) {
+    const positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(geometry.positions), gl.STATIC_DRAW);
+
+    const normalBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(geometry.normals), gl.STATIC_DRAW);
+
+    const indexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(geometry.indices), gl.STATIC_DRAW);
+
+    return {
+        positionBuffer,
+        normalBuffer,
+        indexBuffer,
+        count: geometry.indices.length,
+        width: geometry.width || 0.2,
+        height: geometry.height || 0.6,
+        depth: geometry.depth || 0.2,
+        radius: geometry.radius || 0.08
+    };
+}
